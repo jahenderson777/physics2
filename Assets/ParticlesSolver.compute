@@ -1,0 +1,110 @@
+/*
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+RWTexture2D<float4> Result;
+
+[numthreads(8,8,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    // TODO: insert actual code here!
+
+    Result[id.xy] = float4(id.x & id.y, (id.x & 15)/15.0, (id.y & 15)/15.0, 0.0);
+}
+
+*/
+
+#pragma kernel Update
+
+struct Particle
+{
+	float3 position;
+	float3 velocity;
+};
+
+
+// This describes a vertex on the generated mesh
+struct DrawVertex {
+    float3 positionWS; // position in world space
+    float2 uv; // UV
+};
+// We have to insert three draw vertices at once so the triangle stays connected
+// in the graphics shader. This structure does that
+struct DrawTriangle {
+    //float3 normalWS; // normal in world space. All points share this normal
+    //DrawVertex vertices[3];
+    float3 vertices[3];
+};
+
+
+float dt;
+int shouldMove;
+float2 mousePosition;
+
+int _NumSourceTriangles;
+
+RWStructuredBuffer<Particle> Particles;
+AppendStructuredBuffer<DrawTriangle> _DrawTriangles;
+
+float4x4 _LocalToWorld;
+
+// This converts a source vertex into a draw vertex by converting from OS to WS
+/*DrawVertex TransformToWorldSpace(SourceVertex v) {
+    DrawVertex o;
+    o.positionWS = mul(_LocalToWorld, float4(v.positionOS, 1)).xyz;
+    o.uv = v.uv;
+    return o;
+}
+
+void SetupAndOutputTriangle(DrawVertex a, DrawVertex b, DrawVertex c) {
+    // Since we extrude the center face, the normal must be recalculated
+    float3 normalWS = GetNormalFromTriangle(a.positionWS, b.positionWS, c.positionWS);
+
+    // Create a draw triangle from three points
+    DrawTriangle tri;
+    tri.normalWS = normalWS;
+    tri.vertices[0] = a;
+    tri.vertices[1] = b;
+    tri.vertices[2] = c;
+
+    // Add the output tri to the output buffer
+    _DrawTriangles.Append(tri);
+}*/
+
+
+[numthreads(1024,1,1)]
+void Update(uint3 id : SV_DispatchThreadID)
+{
+    // Disptaches can only be in chunks of 128, there might be more threads than number
+    // of triangles. Return in that case
+    if ((int)id.x >= _NumSourceTriangles) {
+        return;
+    }
+
+	if (shouldMove > 0) {
+		float3 v = float3(mousePosition.x - Particles[id.x].position.x, mousePosition.y - Particles[id.x].position.y, 10);
+		float d2 = v.x * v.x + v.y * v.y;
+		Particles[id.x].velocity = Particles[id.x].velocity + 5 * (v / d2) * dt;
+	}
+	Particles[id.x].position = Particles[id.x].position + Particles[id.x].velocity * dt;
+
+    DrawTriangle tri;
+    //tri.normalWS = normalWS;
+
+    /*tri.vertices[0] = float3(-1.1 + (float)id,0.2,0.3); //Particles[id.x].position;
+
+    tri.vertices[1] = float3(1.1 + (float)id,1.2,1.3); //Particles[id.x].position;
+
+    //tri.vertices[1].x += 0.1;
+
+    tri.vertices[2] = float3(2.1 + (float)id,-2.2,2.3); //Particles[id.x].position;*/
+
+    tri.vertices[0] = float3(-1.1 + Particles[id.x].position.x,0.2 + Particles[id.x].position.y,0.3 + Particles[id.x].position.z); 
+    tri.vertices[1] = float3(1.1 + Particles[id.x].position.x,1.2 + Particles[id.x].position.y,1.3 + Particles[id.x].position.z);
+    tri.vertices[2] = float3(2.1 + Particles[id.x].position.x,-2.2 + Particles[id.x].position.y,2.3 + Particles[id.x].position.z);  
+   // tri.vertices[2].z += 0.1;
+
+    _DrawTriangles.Append(tri);
+}
